@@ -1,0 +1,17 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+python-multipart
+ffmpeg-python
+imagehash
+Pillow
+groq
+google-genai
+sentence-transformers
+open-clip-torch
+chromadb
+pypdf
+weasyprint
+Jinja2
+httpx
+pydantic
