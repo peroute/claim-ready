@@ -81,3 +81,6 @@ Thumbs.db
 # Project artifacts
 outputs/
 chroma_db/
+
+#videos
+real-video.mp4

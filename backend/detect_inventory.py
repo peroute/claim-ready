@@ -11,7 +11,9 @@ time-proximity rule. Produces fully-populated `InventoryItem`s
 from __future__ import annotations
 
 import json
+import re
 import sys
+import time
 from dataclasses import asdict
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -23,12 +25,19 @@ import config
 import vector_store
 from schemas import InventoryItem, KeyFrame, NarrationChunk
 
-WINDOW_SEC: float = 6.0
-WINDOW_STRIDE_SEC: float = 4.0  # 6s window, 2s overlap → stride 4s
+WINDOW_SEC: float = 10.0
+WINDOW_STRIDE_SEC: float = 8.0  # 10s window, 2s overlap → stride 8s
 MAX_FRAMES_PER_WINDOW: int = 4
 NAME_SIMILARITY_THRESHOLD: float = 0.7
 TIME_PROXIMITY_SEC: float = 8.0
 GEMINI_MODEL: str = "gemini-2.5-flash"
+
+# Free-tier limit on gemini-2.5-flash is 5 RPM. 12.5s between calls keeps
+# us strictly under (4.8 RPM) with a small safety margin.
+MIN_SECONDS_BETWEEN_CALLS: float = 12.5
+MAX_RATE_LIMIT_RETRIES: int = 3
+DEFAULT_RETRY_DELAY_SEC: float = 20.0
+_last_call_time: float = 0.0
 
 VALID_CATEGORIES: set[str] = {
     "electronics", "furniture", "textile", "appliance",
@@ -150,19 +159,92 @@ def _windows(end_time: float) -> list[tuple[float, float]]:
     return out
 
 
+def _error_status(e: Exception) -> int | None:
+    """Best-effort HTTP status extraction from a google-genai error."""
+    for attr in ("code", "status_code"):
+        v = getattr(e, attr, None)
+        if isinstance(v, int):
+            return v
+    m = re.match(r"^\s*(\d{3})\b", str(e))
+    return int(m.group(1)) if m else None
+
+
+def _parse_retry_delay(e: Exception, default: float = DEFAULT_RETRY_DELAY_SEC) -> float:
+    """Pull retryDelay (seconds) out of a Gemini 429 error body."""
+    details = getattr(e, "details", None)
+    if isinstance(details, list):
+        for d in details:
+            if isinstance(d, dict) and isinstance(d.get("retryDelay"), str):
+                rd = d["retryDelay"]
+                if rd.endswith("s"):
+                    try:
+                        return float(rd[:-1])
+                    except ValueError:
+                        pass
+    m = re.search(r"['\"]retryDelay['\"]\s*:\s*['\"](\d+(?:\.\d+)?)s['\"]", str(e))
+    if m:
+        try:
+            return float(m.group(1))
+        except ValueError:
+            pass
+    return default
+
+
+def _generate_with_retry(client: Any, **kwargs: Any) -> Any:
+    """Wrap generate_content with proactive throttle + reactive 429 retry."""
+    global _last_call_time
+
+    for attempt in range(MAX_RATE_LIMIT_RETRIES + 1):
+        now = time.monotonic()
+        elapsed = now - _last_call_time if _last_call_time > 0 else float("inf")
+        if elapsed < MIN_SECONDS_BETWEEN_CALLS:
+            sleep_for = MIN_SECONDS_BETWEEN_CALLS - elapsed
+            time.sleep(sleep_for)
+            elapsed = time.monotonic() - _last_call_time
+
+        elapsed_str = f"{elapsed:.1f}" if elapsed != float("inf") else "first"
+        print(f"[detect_inventory] Gemini call (elapsed {elapsed_str}s since last)")
+
+        try:
+            response = client.models.generate_content(**kwargs)
+            _last_call_time = time.monotonic()
+            return response
+        except Exception as e:
+            _last_call_time = time.monotonic()
+            status = _error_status(e)
+
+            if status in (401, 403):
+                print(f"[detect_inventory] auth error ({status}); not retrying")
+                raise
+
+            if status == 429 and attempt < MAX_RATE_LIMIT_RETRIES:
+                delay = _parse_retry_delay(e)
+                print(
+                    f"[detect_inventory] Rate limited, sleeping {delay:.1f}s and retrying "
+                    f"(attempt {attempt + 1}/{MAX_RATE_LIMIT_RETRIES})..."
+                )
+                time.sleep(delay)
+                continue
+
+            raise
+
+    raise RuntimeError("unreachable: retry loop exited without return or raise")
+
+
 def _call_gemini(
     prompt: str, pil_images: list[Image.Image]
 ) -> dict[str, Any] | None:
     """Send a multimodal request and return parsed JSON, or None on bad output."""
     client = _get_gemini_client()
     try:
-        response = client.models.generate_content(
+        response = _generate_with_retry(
+            client,
             model=GEMINI_MODEL,
             contents=[prompt, *pil_images],
             config={"response_mime_type": "application/json"},
         )
     except Exception as e:
-        print(f"[detect_inventory] Gemini SDK error: {e}")
+        print(f"[detect_inventory] Gemini SDK error (after retries): {e}")
         raise
 
     raw = getattr(response, "text", None) or ""
@@ -401,7 +483,7 @@ def _save_cache(
 def _find_video(claim_id: str) -> Path:
     candidates = [
         Path(config.OUTPUT_DIR) / claim_id / "video.mp4",
-        Path("demo_walkthrough.mp4"),
+        Path("real-video.mp4"),
     ]
     for c in candidates:
         if c.is_file():

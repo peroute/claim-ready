@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -100,8 +101,37 @@ def _extract_keyframes(video_path: str, frames_dir: Path) -> list[KeyFrame]:
     return kept
 
 
+def _extract_audio_for_transcription(video_path: str) -> str:
+    """Extract a small mono 16kHz mp3 so we stay under Groq's 25MB upload cap."""
+    fd, audio_path = tempfile.mkstemp(suffix=".mp3", prefix="claim_audio_")
+    os.close(fd)
+    try:
+        (
+            ffmpeg.input(video_path)
+            .output(
+                audio_path,
+                vn=None,
+                ac=1,
+                ar=16000,
+                **{"b:a": "64k"},
+                format="mp3",
+            )
+            .overwrite_output()
+            .run(quiet=True)
+        )
+    except ffmpeg.Error as e:
+        msg = e.stderr.decode("utf-8", errors="ignore") if e.stderr else str(e)
+        print(f"[ingest_video] audio extraction failed: {msg}")
+        try:
+            os.remove(audio_path)
+        except OSError:
+            pass
+        raise
+    return audio_path
+
+
 def _transcribe(video_path: str) -> list[dict[str, Any]]:
-    """Send the video to Groq Whisper and return word-level timestamps."""
+    """Send the video's audio to Groq Whisper and return word-level timestamps."""
     if not config.GROQ_API_KEY:
         raise RuntimeError(
             "GROQ_API_KEY is not set; cannot transcribe audio. "
@@ -112,10 +142,14 @@ def _transcribe(video_path: str) -> list[dict[str, Any]]:
 
     client = Groq(api_key=config.GROQ_API_KEY)
 
+    audio_path = _extract_audio_for_transcription(video_path)
+    audio_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
+    print(f"[ingest_video] extracted audio: {audio_path} ({audio_size_mb:.2f} MB)")
+
     try:
-        with open(video_path, "rb") as f:
+        with open(audio_path, "rb") as f:
             transcription = client.audio.transcriptions.create(
-                file=(os.path.basename(video_path), f.read()),
+                file=(os.path.basename(audio_path), f.read()),
                 model="whisper-large-v3",
                 response_format="verbose_json",
                 timestamp_granularities=["word"],
@@ -123,6 +157,11 @@ def _transcribe(video_path: str) -> list[dict[str, Any]]:
     except Exception as e:
         print(f"[ingest_video] Groq transcription failed: {e}")
         raise
+    finally:
+        try:
+            os.remove(audio_path)
+        except OSError:
+            pass
 
     raw_words = getattr(transcription, "words", None)
     if raw_words is None and isinstance(transcription, dict):
