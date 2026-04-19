@@ -55,6 +55,27 @@ GENERIC_CATEGORY_WORDS: set[str] = {
     "lamp", "rug", "chair", "table", "camera", "watch", "remote",
     "keyboard", "mouse", "monitor", "bed", "book", "books",
 }
+# Words that indicate an item is an accessory of a primary device. Used
+# to block brand-token merges across the primary/accessory boundary
+# (e.g. "Hisense TV" should NOT merge with "Hisense ROKU TV Remote"
+# even though they share the "hisense" brand token).
+ACCESSORY_WORDS: set[str] = {
+    "remote", "controller", "charger", "cable", "case", "cover",
+    "stand", "mount", "adapter", "keyboard", "mouse",
+}
+
+# Whisper occasionally mangles brand names; patch them before they reach
+# Gemini so per-window detection sees the correct brand spelling.
+TYPO_FIXES: dict[str, str] = {
+    "Highsense": "Hisense",
+    "highsense": "Hisense",
+}
+
+
+def _apply_typo_fixes(text: str) -> str:
+    for bad, good in TYPO_FIXES.items():
+        text = text.replace(bad, good)
+    return text
 
 _PROMPT_TEMPLATE = """You are analyzing a segment of an insurance claim video walkthrough.
 The user is documenting damage to their personal property.
@@ -351,11 +372,32 @@ def _category_compatible(c1: str, c2: str) -> bool:
     return c1 == c2 or c1 == "other" or c2 == "other"
 
 
+def _has_accessory_word(name: str) -> bool:
+    tokens = {t.lower() for t in re.findall(r"[A-Za-z][A-Za-z0-9\-]*", name)}
+    return bool(tokens & ACCESSORY_WORDS)
+
+
+def _accessory_mismatch(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    """True iff exactly one of the two names contains an accessory word.
+
+    Used to block brand-token merges across the primary/accessory
+    boundary, so e.g. "Hisense TV" and "Hisense ROKU TV Remote" stay
+    as separate items despite sharing the "hisense" brand token.
+    """
+    return _has_accessory_word(a["name"]) != _has_accessory_word(b["name"])
+
+
 def _same_item(a: dict[str, Any], b: dict[str, Any]) -> bool:
     # Brand-token rule: shared brand token (e.g. "Hisense", "Lenovo",
     # "Pixel") + compatible category → same physical object regardless
     # of how far apart in the video they were re-described.
-    if _share_brand_token(a, b) and _category_compatible(a["category"], b["category"]):
+    # Blocked when one side is an accessory (remote, charger, etc.) and
+    # the other is the primary device.
+    if (
+        _share_brand_token(a, b)
+        and _category_compatible(a["category"], b["category"])
+        and not _accessory_mismatch(a, b)
+    ):
         return True
 
     if a["category"] != b["category"]:
@@ -439,7 +481,9 @@ def detect_inventory(
     for start, end in _windows(end_time):
         window_frames = _frames_in_window(frames, start, end)
         chunks_in_win = vector_store.search_narration_by_time(claim_id, start, end)
-        narration_text = " ".join(c["text"] for c in chunks_in_win).strip()
+        narration_text = _apply_typo_fixes(
+            " ".join(c["text"] for c in chunks_in_win).strip()
+        )
 
         if not window_frames or not narration_text:
             continue

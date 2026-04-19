@@ -11,7 +11,7 @@ sentence-transformers
 open-clip-torch
 chromadb
 pypdf
-weasyprint
+playwright
 Jinja2
 httpx
 pydantic
