@@ -1,71 +1,121 @@
 import type { Metadata } from "next";
-import { FileCheck, Shield, Zap } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, PlayCircle, Sparkles } from "lucide-react";
+
 import { Logo } from "@/components/brand/logo";
 import { UploadCard } from "@/components/upload/upload-card";
+import { PacketMockup } from "@/components/landing/packet-mockup";
+import { FeatureCards } from "@/components/landing/feature-cards";
+import { HowItWorks } from "@/components/landing/how-it-works";
+import { SiteFooter } from "@/components/landing/site-footer";
 
 export const metadata: Metadata = {
   title: "Claim-ready — Turn your damage video into a claim packet",
 };
 
-const FEATURES = [
-  {
-    icon: Zap,
-    title: "Fast processing",
-    body: "Complete claim documentation in minutes, not hours.",
-  },
-  {
-    icon: FileCheck,
-    title: "Policy-aligned",
-    body: "Automatic coverage matching with relevant citations.",
-  },
-  {
-    icon: Shield,
-    title: "Professional output",
-    body: "FNOL letter and itemized inventory ready for submission.",
-  },
-];
-
 export default function LandingPage() {
   return (
-    <main className="container py-16 md:py-24">
-      <div className="grid gap-12 md:gap-16 lg:grid-cols-[1.1fr_1fr] lg:gap-20">
-        {/* LEFT — pitch column */}
-        <section className="flex flex-col">
-          <Logo />
+    <main className="relative">
+      {/* ─── Top nav ────────────────────────────────────────────── */}
+      <header className="container flex items-center justify-between pt-8">
+        <Logo variant="dark" />
+        <div className="flex items-center gap-2">
+          <span className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-400 backdrop-blur md:inline-flex">
+            <span className="font-mono text-teal-300">v1.0</span>
+            <span className="h-1 w-1 rounded-full bg-slate-600" />
+            Built for Hook &lsquo;Em Hacks 2026
+          </span>
+        </div>
+      </header>
 
-          <h1 className="mt-10 text-balance text-5xl font-extrabold leading-[1.05] tracking-tight text-slate-900 md:text-6xl">
-            Turn your damage video into a claim packet.
-          </h1>
+      {/* ─── Hero ───────────────────────────────────────────────── */}
+      <section className="container flex min-h-[88vh] flex-col items-center justify-center pt-16 text-center">
+        {/* eyebrow pill */}
+        <div
+          className="inline-flex animate-fade-in-up items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-xs font-medium text-slate-300 backdrop-blur-xl"
+          style={{ animationDelay: "0ms", opacity: 0 }}
+        >
+          <Sparkles className="h-3.5 w-3.5 text-teal-300" />
+          Multimodal AI · Search & Generation
+        </div>
 
-          <p className="mt-6 max-w-xl text-xl leading-relaxed text-slate-600">
-            AI-generated inventory, policy citations, and an FNOL letter ready
-            to send — in under 3 minutes.
-          </p>
+        <h1
+          className="mt-7 max-w-4xl animate-fade-in-up text-balance text-6xl font-extrabold leading-[1.05] tracking-tight text-white lg:text-7xl"
+          style={{ animationDelay: "120ms", opacity: 0 }}
+        >
+          Turn your damage video into a{" "}
+          <span className="font-serif text-[1.05em] font-normal italic text-teal-300 [text-shadow:0_0_40px_rgba(20,184,166,0.35)]">
+            claim packet
+          </span>
+          .
+        </h1>
 
-          <ul className="mt-12 space-y-6">
-            {FEATURES.map(({ icon: Icon, title, body }) => (
-              <li key={title} className="flex items-start gap-4">
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-navy-50 text-navy-600 ring-1 ring-inset ring-navy-100">
-                  <Icon className="h-5 w-5" strokeWidth={2.25} />
-                </span>
-                <div>
-                  <p className="font-semibold text-slate-900">{title}</p>
-                  <p className="mt-0.5 text-slate-600">{body}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
+        <p
+          className="mt-6 max-w-2xl animate-fade-in-up text-lg leading-relaxed text-slate-400 md:text-xl"
+          style={{ animationDelay: "240ms", opacity: 0 }}
+        >
+          AI watches your walkthrough, cites your policy, and generates a
+          submission-ready packet in under 3 minutes.
+        </p>
 
-          <p className="mt-16 text-sm text-slate-500">
-            Built at Hook &lsquo;Em Hacks 2026. Powered by Gemini 2.5 and CLIP.
-          </p>
-        </section>
+        <div
+          className="mt-10 flex animate-fade-in-up flex-col items-center gap-3 sm:flex-row"
+          style={{ animationDelay: "360ms", opacity: 0 }}
+        >
+          <Link
+            href="#start"
+            className="group inline-flex h-12 items-center gap-2 overflow-hidden rounded-xl bg-gradient-to-r from-navy-600 to-teal-600 px-7 text-base font-semibold text-white shadow-[0_0_40px_rgba(20,184,166,0.35)] transition-all hover:shadow-[0_0_60px_rgba(20,184,166,0.55)] hover:brightness-110"
+          >
+            <span className="relative">Start your claim</span>
+            <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+          </Link>
+          <Link
+            href="#how"
+            className="inline-flex h-12 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-6 text-base font-medium text-slate-200 backdrop-blur-xl transition-colors hover:border-white/20 hover:bg-white/[0.06]"
+          >
+            <PlayCircle className="h-4 w-4 text-teal-300" />
+            See how it works
+          </Link>
+        </div>
 
-        {/* RIGHT — intake + dropzones + submit */}
-        <section className="flex">
-          <UploadCard />
-        </section>
+        {/* ─── Floating mockup ─────────────────────────────── */}
+        <div
+          className="mt-20 flex w-full animate-fade-in-up justify-center"
+          style={{ animationDelay: "500ms", opacity: 0 }}
+        >
+          <PacketMockup />
+        </div>
+      </section>
+
+      {/* ─── Bento features ────────────────────────────────────── */}
+      <FeatureCards />
+
+      {/* ─── How it works ──────────────────────────────────────── */}
+      <div id="how">
+        <HowItWorks />
       </div>
+
+      {/* ─── Upload section ────────────────────────────────────── */}
+      <section id="start" className="container py-24">
+        <div className="mx-auto mb-12 max-w-2xl text-center">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-300">
+            Try it now
+          </p>
+          <h2 className="mt-3 text-balance text-4xl font-extrabold tracking-tight text-white md:text-5xl">
+            Ready to{" "}
+            <span className="font-serif italic text-teal-300">start</span>?
+          </h2>
+          <p className="mt-4 text-lg text-slate-400">
+            Drop a damage walkthrough and your policy. We&rsquo;ll handle the rest.
+          </p>
+        </div>
+
+        <div className="mx-auto max-w-2xl">
+          <UploadCard />
+        </div>
+      </section>
+
+      <SiteFooter />
     </main>
   );
 }

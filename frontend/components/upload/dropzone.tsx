@@ -49,15 +49,15 @@ export function Dropzone({
 
   return (
     <div>
-      <p className="mb-2 text-sm font-medium text-slate-900">{label}</p>
+      <p className="mb-2 text-sm font-medium text-slate-300">{label}</p>
 
       {file ? (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 backdrop-blur-xl">
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-slate-900">
+            <p className="truncate text-sm font-medium text-white">
               {file.name}
             </p>
-            <p className="mt-0.5 text-xs text-slate-500">
+            <p className="mt-0.5 text-xs text-slate-400">
               {formatBytes(file.size)}
             </p>
           </div>
@@ -66,7 +66,7 @@ export function Dropzone({
             onClick={() => onChange(null)}
             disabled={disabled}
             aria-label={`Remove ${file.name}`}
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-500 transition-colors hover:bg-white hover:text-slate-900 disabled:opacity-50"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-50"
           >
             <X className="h-4 w-4" />
           </button>
@@ -75,11 +75,11 @@ export function Dropzone({
         <div
           {...getRootProps()}
           className={cn(
-            "flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-8 text-center transition-colors",
+            "flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-8 text-center transition-all",
             isDragActive
-              ? "border-navy-400 bg-navy-50/60"
-              : "border-slate-200 hover:border-slate-300 hover:bg-slate-50",
-            isDragReject && "border-red-300 bg-red-50",
+              ? "border-teal-400 bg-teal-500/10 shadow-[inset_0_0_30px_rgba(20,184,166,0.18)]"
+              : "border-white/15 bg-white/[0.02] hover:border-white/30 hover:bg-white/[0.04]",
+            isDragReject && "border-red-400/70 bg-red-500/10",
             disabled && "pointer-events-none opacity-60",
           )}
         >
@@ -87,11 +87,11 @@ export function Dropzone({
           <UploadCloud
             className={cn(
               "h-6 w-6",
-              isDragActive ? "text-navy-600" : "text-slate-400",
+              isDragActive ? "text-teal-300" : "text-slate-500",
             )}
             strokeWidth={2}
           />
-          <p className="mt-3 text-sm font-medium text-slate-700">
+          <p className="mt-3 text-sm font-medium text-slate-200">
             {isDragActive ? "Drop to attach" : "Drag and drop or click"}
           </p>
           <p className="mt-1 text-xs text-slate-500">{hint}</p>
