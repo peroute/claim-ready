@@ -17,6 +17,7 @@ import json
 import os
 import sys
 import tempfile
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -243,8 +244,46 @@ def _chunk_narration(
     return chunks
 
 
+def _cache_path(claim_id: str) -> Path:
+    return Path(config.OUTPUT_DIR) / claim_id / "ingest_cache.json"
+
+
+def _load_cache(
+    claim_id: str,
+) -> tuple[list[KeyFrame], list[NarrationChunk]] | None:
+    p = _cache_path(claim_id)
+    if not p.is_file():
+        return None
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        frames = [KeyFrame(**fr) for fr in data["frames"]]
+        chunks = [NarrationChunk(**c) for c in data["narration"]]
+        return frames, chunks
+    except (OSError, json.JSONDecodeError, KeyError, TypeError) as e:
+        print(f"[ingest_video] cache read failed ({e}); re-ingesting")
+        return None
+
+
+def _save_cache(
+    claim_id: str, frames: list[KeyFrame], chunks: list[NarrationChunk]
+) -> None:
+    p = _cache_path(claim_id)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "frames": [asdict(fr) for fr in frames],
+                "narration": [asdict(c) for c in chunks],
+            },
+            f,
+        )
+
+
 def ingest_video(
-    video_path: str, claim_id: str
+    video_path: str,
+    claim_id: str,
+    use_cache: bool = True,
 ) -> tuple[list[KeyFrame], list[NarrationChunk]]:
     """Run the full video ingestion pipeline for a single claim.
 
@@ -252,10 +291,25 @@ def ingest_video(
         video_path: Path to the source walkthrough video.
         claim_id: Unique identifier; used for output directory layout
             and to namespace narration chunk ids.
+        use_cache: If True (default), reuse a previous ingestion's
+            output from `outputs/{claim_id}/ingest_cache.json` when
+            present, skipping ffmpeg/Whisper/CLIP work entirely. Pass
+            False to force a fresh ingest (e.g. when the source video
+            has changed).
 
     Returns:
         (keyframes, narration_chunks) — both already embedded.
     """
+    if use_cache:
+        cached = _load_cache(claim_id)
+        if cached is not None:
+            frames, chunks = cached
+            print(
+                f"[ingest_video] cache hit for claim={claim_id!r}: "
+                f"{len(frames)} frames + {len(chunks)} chunks"
+            )
+            return frames, chunks
+
     if not os.path.isfile(video_path):
         raise FileNotFoundError(f"Video not found: {video_path}")
 
@@ -266,6 +320,8 @@ def ingest_video(
     keyframes = _extract_keyframes(video_path, frames_dir)
     words = _transcribe(video_path)
     chunks = _chunk_narration(words, claim_id)
+
+    _save_cache(claim_id, keyframes, chunks)
     return keyframes, chunks
 
 

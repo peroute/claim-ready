@@ -141,11 +141,19 @@ def _image_to_data_uri(path: Path) -> Optional[str]:
 
 
 def _build_thumbnails(claim_id: str, items: list[InventoryItem]) -> dict[str, str]:
+    """Pick a representative thumbnail per item.
+
+    Uses the *middle* source frame rather than the first because the
+    first frame is often a transition (item entering the shot, motion
+    blur, partial occlusion). The middle frame is empirically the most
+    centered/clean view of the item.
+    """
     thumbs: dict[str, str] = {}
     for it in items:
         if not it.source_frame_ids:
             continue
-        uri = _image_to_data_uri(_frame_path(claim_id, it.source_frame_ids[0]))
+        mid_idx = len(it.source_frame_ids) // 2
+        uri = _image_to_data_uri(_frame_path(claim_id, it.source_frame_ids[mid_idx]))
         if uri:
             thumbs[it.item_id] = uri
     return thumbs
