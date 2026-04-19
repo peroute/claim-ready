@@ -28,10 +28,11 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Request,
     UploadFile,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 import config
 from generate_packet import generate_packet
@@ -90,6 +91,16 @@ def _packet_pdf_path(claim_id: str) -> Path:
     return _claim_dir(claim_id) / "packet.pdf"
 
 
+def _intake_path(claim_id: str) -> Path:
+    return _claim_dir(claim_id) / "intake.json"
+
+
+def _frame_path(claim_id: str, frame_id: str) -> Path:
+    # Accept either "frame_0042" or "frame_0042.jpg" — strip the suffix.
+    name = frame_id[:-4] if frame_id.endswith(".jpg") else frame_id
+    return _claim_dir(claim_id) / "frames" / f"{name}.jpg"
+
+
 # ---------------------------------------------------------------------------
 # Upload helpers
 # ---------------------------------------------------------------------------
@@ -99,6 +110,30 @@ def _save_upload(upload: UploadFile, dest: Path) -> None:
     with open(dest, "wb") as out:
         shutil.copyfileobj(upload.file, out)
     upload.file.close()
+
+
+def _save_intake(claim_id: str, intake: dict) -> None:
+    """Persist intake to disk so /packet can return it.
+
+    Lets the frontend regenerate without having to stash claimant_name,
+    cause, and location in localStorage.
+    """
+    path = _intake_path(claim_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(intake, f, indent=2)
+
+
+def _load_intake(claim_id: str) -> dict | None:
+    path = _intake_path(claim_id)
+    if not path.is_file():
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else None
+    except (OSError, json.JSONDecodeError):
+        return None
 
 
 def _parse_intake(intake_json: str) -> dict:
@@ -162,6 +197,7 @@ async def create_claim(
     policy_path = _policy_path(claim_id)
     _save_upload(video, video_path)
     _save_upload(policy, policy_path)
+    _save_intake(claim_id, intake_data)
 
     _set_progress(PipelineProgress(
         stage="queued",
@@ -229,6 +265,20 @@ async def get_packet_meta(claim_id: str) -> JSONResponse:
         raise HTTPException(status_code=404, detail="packet.json not found")
     with open(p, "r", encoding="utf-8") as f:
         meta = json.load(f)
+
+    # Strip per-section embeddings — they bloat the wire by ~1.5KB/section
+    # and the frontend never uses them. Done here (not at write time) so
+    # the on-disk packet.json remains the full ground truth.
+    sections = meta.get("policy_sections_cited")
+    if isinstance(sections, list):
+        for s in sections:
+            if isinstance(s, dict):
+                s.pop("embedding", None)
+
+    intake = _load_intake(claim_id)
+    if intake is not None:
+        meta["intake"] = intake
+
     return JSONResponse(content=meta)
 
 
@@ -246,6 +296,82 @@ async def get_packet_pdf(claim_id: str) -> FileResponse:
         media_type="application/pdf",
         filename=f"claim_{claim_id}.pdf",
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /claims/{claim_id}/video  (range-aware; required by HTML5 <video>)
+# GET /claims/{claim_id}/frames/{frame_id}
+# ---------------------------------------------------------------------------
+
+def _range_response(
+    path: Path, request: Request, media_type: str
+) -> "JSONResponse | FileResponse | StreamingResponse":
+    """Serve `path` with HTTP Range support so browser <video> can seek.
+
+    Starlette's FileResponse doesn't honor the Range header on its own,
+    so we parse it manually and stream the requested byte slice. Falls
+    back to a normal 200 FileResponse when no Range header is present.
+    """
+    file_size = path.stat().st_size
+    range_header = request.headers.get("range")
+    if not range_header:
+        return FileResponse(str(path), media_type=media_type)
+
+    units, _, raw = range_header.partition("=")
+    if units.strip().lower() != "bytes":
+        return FileResponse(str(path), media_type=media_type)
+
+    start_str, _, end_str = raw.partition("-")
+    try:
+        start = int(start_str) if start_str else 0
+        end = int(end_str) if end_str else file_size - 1
+    except ValueError:
+        return FileResponse(str(path), media_type=media_type)
+
+    if start >= file_size or start < 0:
+        raise HTTPException(
+            status_code=416, detail="Range not satisfiable"
+        )
+    end = min(end, file_size - 1)
+    length = end - start + 1
+
+    def chunk_iter():
+        with open(path, "rb") as f:
+            f.seek(start)
+            remaining = length
+            while remaining > 0:
+                buf = f.read(min(64 * 1024, remaining))
+                if not buf:
+                    break
+                remaining -= len(buf)
+                yield buf
+
+    return StreamingResponse(
+        chunk_iter(),
+        status_code=206,
+        media_type=media_type,
+        headers={
+            "Content-Range": f"bytes {start}-{end}/{file_size}",
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(length),
+        },
+    )
+
+
+@app.get("/claims/{claim_id}/video")
+async def get_video(claim_id: str, request: Request):
+    p = _video_path(claim_id)
+    if not p.is_file():
+        raise HTTPException(status_code=404, detail="video not found")
+    return _range_response(p, request, "video/mp4")
+
+
+@app.get("/claims/{claim_id}/frames/{frame_id}")
+async def get_frame(claim_id: str, frame_id: str) -> FileResponse:
+    p = _frame_path(claim_id, frame_id)
+    if not p.is_file():
+        raise HTTPException(status_code=404, detail="frame not found")
+    return FileResponse(str(p), media_type="image/jpeg")
 
 
 # ---------------------------------------------------------------------------
@@ -294,6 +420,9 @@ def regenerate_packet(claim_id: str, body: dict) -> dict:
         raise HTTPException(
             status_code=400, detail="'intake' object required"
         )
+
+    # Persist the (possibly user-edited) intake so future GETs see it.
+    _save_intake(claim_id, intake)
 
     sections = ingest_policy(str(policy_pdf))
 

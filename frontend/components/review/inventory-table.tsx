@@ -16,10 +16,11 @@ import {
 } from "@/components/ui/table";
 import { DeleteItemDialog } from "@/components/review/delete-item-dialog";
 import { formatTimestamp } from "@/lib/format";
-import type { InventoryItem } from "@/lib/api";
+import { getFrameUrl, type InventoryItem } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export interface InventoryTableProps {
+  claimId: string;
   items: InventoryItem[];
   selectedItemId: string | null;
   onSelect: (item: InventoryItem) => void;
@@ -28,6 +29,7 @@ export interface InventoryTableProps {
 }
 
 export function InventoryTable({
+  claimId,
   items,
   selectedItemId,
   onSelect,
@@ -98,7 +100,7 @@ export function InventoryTable({
                   </TableCell>
 
                   <TableCell className="py-4">
-                    <Thumbnail item={item} />
+                    <Thumbnail claimId={claimId} item={item} />
                     <p className="mt-1.5 text-[11px] tabular-nums text-slate-400">
                       {formatTimestamp(item.first_seen_sec)}
                     </p>
@@ -280,13 +282,23 @@ function ValueInput({
   );
 }
 
-function Thumbnail({ item }: { item: InventoryItem }) {
-  if (item.thumbnail_base64) {
+function Thumbnail({ claimId, item }: { claimId: string; item: InventoryItem }) {
+  // Pick the middle source frame — same heuristic the PDF template uses.
+  const frameId =
+    item.source_frame_ids.length > 0
+      ? item.source_frame_ids[Math.floor(item.source_frame_ids.length / 2)]
+      : null;
+
+  const [errored, setErrored] = useState(false);
+
+  if (frameId && !errored) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={`data:image/jpeg;base64,${item.thumbnail_base64}`}
+        src={getFrameUrl(claimId, frameId)}
         alt={item.name}
+        loading="lazy"
+        onError={() => setErrored(true)}
         className="h-[60px] w-20 rounded-lg object-cover ring-1 ring-slate-200"
       />
     );

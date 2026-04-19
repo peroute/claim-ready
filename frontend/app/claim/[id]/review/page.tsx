@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertCircle,
@@ -12,6 +12,10 @@ import {
 import { Logo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 import { InventoryTable } from "@/components/review/inventory-table";
+import {
+  VideoPanel,
+  type VideoPanelHandle,
+} from "@/components/review/video-panel";
 import {
   ApiError,
   getPacket,
@@ -35,6 +39,8 @@ export default function ReviewPage({ params }: PageProps) {
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const videoRef = useRef<VideoPanelHandle>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,7 +82,7 @@ export default function ReviewPage({ params }: PageProps) {
 
   function selectItem(item: InventoryItem) {
     setSelectedItemId(item.item_id);
-    // Commit 9 wires this to the video player's seek().
+    videoRef.current?.seek(item.first_seen_sec);
   }
 
   // ---- submit --------------------------------------------------------------
@@ -86,8 +92,13 @@ export default function ReviewPage({ params }: PageProps) {
     setSubmitting(true);
     setSubmitError(null);
 
+    // Prefer the server-side intake (persisted on upload); fall back to
+    // the localStorage stash, then to a minimal placeholder so the
+    // backend's required-fields check still passes.
     const intake =
-      loadIntake(params.id) ?? fallbackIntake(packet.incident_date);
+      packet.intake ??
+      loadIntake(params.id) ??
+      fallbackIntake(packet.incident_date);
 
     try {
       await regeneratePacket(params.id, items, intake);
@@ -153,6 +164,7 @@ export default function ReviewPage({ params }: PageProps) {
                 <EmptyState />
               ) : (
                 <InventoryTable
+                  claimId={params.id}
                   items={items}
                   selectedItemId={selectedItemId}
                   onSelect={selectItem}
@@ -172,7 +184,13 @@ export default function ReviewPage({ params }: PageProps) {
             </section>
 
             <aside className="lg:sticky lg:top-24 lg:h-fit">
-              <VideoPanelPlaceholder />
+              <VideoPanel
+                ref={videoRef}
+                claimId={params.id}
+                selectedItem={
+                  items.find((i) => i.item_id === selectedItemId) ?? null
+                }
+              />
             </aside>
           </div>
         )}
@@ -336,20 +354,6 @@ function LoadErrorPanel({
       >
         Back to upload
       </Button>
-    </div>
-  );
-}
-
-function VideoPanelPlaceholder() {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-        Source video
-      </p>
-      <div className="mt-3 aspect-video w-full rounded-xl bg-slate-100" />
-      <p className="mt-3 text-xs text-slate-500">
-        Inline player and timeline-sync land in the next pass.
-      </p>
     </div>
   );
 }

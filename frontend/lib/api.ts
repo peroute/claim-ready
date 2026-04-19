@@ -65,6 +65,12 @@ export interface ClaimPacketJSON {
   video_source_path: string;
   policy_source_path: string;
   pdf_path: string | null;
+  /**
+   * Original intake (claimant_name, cause, location, incident_date) the
+   * backend persists alongside the packet. Optional because old packets
+   * created before this field existed won't have it on disk.
+   */
+  intake?: IntakePayload;
 }
 
 export interface PipelineStatus {
@@ -218,4 +224,12 @@ export async function regeneratePacket(
 
 export function getPdfUrl(id: string): string {
   return `${API_BASE}/claims/${id}/pdf`;
+}
+
+export function getVideoUrl(id: string): string {
+  return `${API_BASE}/claims/${id}/video`;
+}
+
+export function getFrameUrl(id: string, frameId: string): string {
+  return `${API_BASE}/claims/${id}/frames/${frameId}`;
 }
