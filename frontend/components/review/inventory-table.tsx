@@ -53,7 +53,7 @@ export function InventoryTable({
   return (
     <>
       <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card">
-        <Table>
+        <Table className="min-w-[820px]">
           <TableHeader>
             <TableRow className="bg-slate-50 hover:bg-slate-50">
               <TableHead className="w-14 text-xs font-semibold uppercase tracking-wide text-slate-500">

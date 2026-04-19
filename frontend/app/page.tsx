@@ -1,6 +1,11 @@
+import type { Metadata } from "next";
 import { FileCheck, Shield, Zap } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { UploadCard } from "@/components/upload/upload-card";
+
+export const metadata: Metadata = {
+  title: "Claim-ready — Turn your damage video into a claim packet",
+};
 
 const FEATURES = [
   {

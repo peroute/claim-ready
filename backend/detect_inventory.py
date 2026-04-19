@@ -22,6 +22,7 @@ from typing import Any, Optional
 from PIL import Image
 
 import config
+import gemini_retry
 import vector_store
 from schemas import InventoryItem, KeyFrame, NarrationChunk
 
@@ -33,11 +34,9 @@ TIME_PROXIMITY_SEC: float = 8.0
 GEMINI_MODEL: str = "gemini-2.5-flash"
 
 # Tier 1 (paid) on gemini-2.5-flash allows ~1000 RPM. Keep a tiny 0.5s
-# spacing as a courtesy gap; the 429 retry path below remains as the real
-# safety net if we ever hit a per-minute or per-day cap.
+# spacing as a courtesy gap; gemini_retry.call_with_retry handles 429 +
+# 5xx transients reactively.
 MIN_SECONDS_BETWEEN_CALLS: float = 0.5
-MAX_RATE_LIMIT_RETRIES: int = 3
-DEFAULT_RETRY_DELAY_SEC: float = 20.0
 _last_call_time: float = 0.0
 
 VALID_CATEGORIES: set[str] = {
@@ -192,76 +191,30 @@ def _windows(end_time: float) -> list[tuple[float, float]]:
     return out
 
 
-def _error_status(e: Exception) -> int | None:
-    """Best-effort HTTP status extraction from a google-genai error."""
-    for attr in ("code", "status_code"):
-        v = getattr(e, attr, None)
-        if isinstance(v, int):
-            return v
-    m = re.match(r"^\s*(\d{3})\b", str(e))
-    return int(m.group(1)) if m else None
-
-
-def _parse_retry_delay(e: Exception, default: float = DEFAULT_RETRY_DELAY_SEC) -> float:
-    """Pull retryDelay (seconds) out of a Gemini 429 error body."""
-    details = getattr(e, "details", None)
-    if isinstance(details, list):
-        for d in details:
-            if isinstance(d, dict) and isinstance(d.get("retryDelay"), str):
-                rd = d["retryDelay"]
-                if rd.endswith("s"):
-                    try:
-                        return float(rd[:-1])
-                    except ValueError:
-                        pass
-    m = re.search(r"['\"]retryDelay['\"]\s*:\s*['\"](\d+(?:\.\d+)?)s['\"]", str(e))
-    if m:
-        try:
-            return float(m.group(1))
-        except ValueError:
-            pass
-    return default
-
-
 def _generate_with_retry(client: Any, **kwargs: Any) -> Any:
-    """Wrap generate_content with proactive throttle + reactive 429 retry."""
+    """Throttle gently, then dispatch to the shared retry helper.
+
+    Throttle is local because it only matters for the per-window loop
+    here (generate_packet only fires twice per packet). Retry policy
+    for 429 / 500 / 503 / 504 lives in `gemini_retry`.
+    """
     global _last_call_time
 
-    for attempt in range(MAX_RATE_LIMIT_RETRIES + 1):
-        now = time.monotonic()
-        elapsed = now - _last_call_time if _last_call_time > 0 else float("inf")
-        if elapsed < MIN_SECONDS_BETWEEN_CALLS:
-            sleep_for = MIN_SECONDS_BETWEEN_CALLS - elapsed
-            time.sleep(sleep_for)
-            elapsed = time.monotonic() - _last_call_time
+    now = time.monotonic()
+    elapsed = now - _last_call_time if _last_call_time > 0 else float("inf")
+    if elapsed < MIN_SECONDS_BETWEEN_CALLS:
+        time.sleep(MIN_SECONDS_BETWEEN_CALLS - elapsed)
+        elapsed = time.monotonic() - _last_call_time
 
-        elapsed_str = f"{elapsed:.1f}" if elapsed != float("inf") else "first"
-        print(f"[detect_inventory] Gemini call (elapsed {elapsed_str}s since last)")
+    elapsed_str = f"{elapsed:.1f}" if elapsed != float("inf") else "first"
+    print(f"[detect_inventory] Gemini call (elapsed {elapsed_str}s since last)")
 
-        try:
-            response = client.models.generate_content(**kwargs)
-            _last_call_time = time.monotonic()
-            return response
-        except Exception as e:
-            _last_call_time = time.monotonic()
-            status = _error_status(e)
-
-            if status in (401, 403):
-                print(f"[detect_inventory] auth error ({status}); not retrying")
-                raise
-
-            if status == 429 and attempt < MAX_RATE_LIMIT_RETRIES:
-                delay = _parse_retry_delay(e)
-                print(
-                    f"[detect_inventory] Rate limited, sleeping {delay:.1f}s and retrying "
-                    f"(attempt {attempt + 1}/{MAX_RATE_LIMIT_RETRIES})..."
-                )
-                time.sleep(delay)
-                continue
-
-            raise
-
-    raise RuntimeError("unreachable: retry loop exited without return or raise")
+    try:
+        return gemini_retry.call_with_retry(
+            client, log_prefix="[detect_inventory]", **kwargs
+        )
+    finally:
+        _last_call_time = time.monotonic()
 
 
 def _call_gemini(

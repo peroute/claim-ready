@@ -15,7 +15,6 @@ last stage of the pipeline before review.
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import json
 import sys
@@ -27,6 +26,7 @@ from typing import Any, Optional
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 import config
+import gemini_retry
 from schemas import ClaimPacket, InventoryItem, NarrationChunk, PolicySection
 
 GEMINI_MODEL: str = "gemini-2.5-flash"
@@ -69,8 +69,14 @@ def _get_gemini_client() -> Any:
 
 
 def _gemini_text(prompt: str) -> str:
+    """Single-prompt text generation with shared 429/5xx retry."""
     client = _get_gemini_client()
-    response = client.models.generate_content(model=GEMINI_MODEL, contents=[prompt])
+    response = gemini_retry.call_with_retry(
+        client,
+        log_prefix="[generate_packet]",
+        model=GEMINI_MODEL,
+        contents=[prompt],
+    )
     return (getattr(response, "text", None) or "").strip()
 
 
@@ -214,34 +220,42 @@ def _render_html(
 
 # ---------------------------------------------------------------------------
 # PDF rendering (headless Chromium via Playwright)
+#
+# Uses sync_playwright on purpose. generate_packet() is invoked from
+# synchronous call sites — `regenerate_packet` (sync FastAPI endpoint)
+# and the BackgroundTasks threadpool worker that runs `run_pipeline`.
+# Calling `asyncio.run()` from a non-main thread on Windows can
+# deadlock indefinitely waiting on the Proactor IOCP loop, which we
+# observed as the "rendering PDF" step hanging forever with no
+# Chromium child process. sync_playwright runs the driver in its own
+# subprocess and avoids the issue entirely.
 # ---------------------------------------------------------------------------
 
-async def _render_pdf_async(html: str, output_pdf_path: Path) -> None:
-    from playwright.async_api import async_playwright
-
-    output_pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
-        try:
-            page = await browser.new_page()
-            await page.set_content(html, wait_until="load")
-            await page.pdf(
-                path=str(output_pdf_path),
-                format="Letter",
-                margin={
-                    "top": "0.5in",
-                    "right": "0.5in",
-                    "bottom": "0.5in",
-                    "left": "0.5in",
-                },
-                print_background=True,
-            )
-        finally:
-            await browser.close()
+PDF_MARGIN = {
+    "top": "0.5in",
+    "right": "0.5in",
+    "bottom": "0.5in",
+    "left": "0.5in",
+}
 
 
 def _render_pdf(html: str, output_pdf_path: Path) -> None:
-    asyncio.run(_render_pdf_async(html, output_pdf_path))
+    from playwright.sync_api import sync_playwright
+
+    output_pdf_path.parent.mkdir(parents=True, exist_ok=True)
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        try:
+            page = browser.new_page()
+            page.set_content(html, wait_until="load")
+            page.pdf(
+                path=str(output_pdf_path),
+                format="Letter",
+                margin=PDF_MARGIN,
+                print_background=True,
+            )
+        finally:
+            browser.close()
 
 
 # ---------------------------------------------------------------------------
