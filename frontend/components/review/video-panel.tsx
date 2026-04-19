@@ -50,8 +50,6 @@ export const VideoPanel = forwardRef<VideoPanelHandle, VideoPanelProps>(
       [unavailable],
     );
 
-    // Probe the endpoint once so we can hide the player gracefully
-    // if the backend doesn't have the /video route deployed.
     useEffect(() => {
       let cancelled = false;
       fetch(getVideoUrl(claimId), { method: "HEAD" })
@@ -69,11 +67,11 @@ export const VideoPanel = forwardRef<VideoPanelHandle, VideoPanelProps>(
 
     if (unavailable) {
       return (
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <div className="glass-card rounded-2xl p-5">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-teal-300">
             Source video
           </p>
-          <div className="mt-3 grid aspect-video w-full place-items-center rounded-xl bg-slate-100 text-slate-400">
+          <div className="mt-3 grid aspect-video w-full place-items-center rounded-xl border border-white/5 bg-white/[0.02] text-slate-500">
             <div className="text-center">
               <VideoOff className="mx-auto h-6 w-6" />
               <p className="mt-2 text-xs">Video unavailable</p>
@@ -88,8 +86,8 @@ export const VideoPanel = forwardRef<VideoPanelHandle, VideoPanelProps>(
     }
 
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+      <div className="glass-card rounded-2xl p-5">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-teal-300">
           Source video
         </p>
 
@@ -101,22 +99,22 @@ export const VideoPanel = forwardRef<VideoPanelHandle, VideoPanelProps>(
           onTimeUpdate={(e) =>
             setCurrentTime((e.currentTarget as HTMLVideoElement).currentTime)
           }
-          className="mt-3 aspect-video w-full rounded-xl bg-slate-900"
+          className="mt-3 aspect-video w-full rounded-xl bg-black ring-1 ring-white/10"
         />
 
         <div className="mt-3 flex items-baseline justify-between text-xs">
-          <span className="font-mono tabular-nums text-slate-500">
+          <span className="font-mono tabular-nums text-teal-300">
             {formatTimestamp(currentTime)}
           </span>
           {selectedItem ? (
-            <span className="truncate text-right text-slate-600">
-              <span className="text-slate-400">Now reviewing:</span>{" "}
-              <span className="font-medium text-slate-900">
+            <span className="truncate text-right text-slate-400">
+              <span className="text-slate-500">Now reviewing:</span>{" "}
+              <span className="font-medium text-white">
                 {selectedItem.name}
               </span>
             </span>
           ) : (
-            <span className="text-slate-400">
+            <span className="text-slate-500">
               Click any row to jump to its moment
             </span>
           )}

@@ -92,9 +92,6 @@ export default function ReviewPage({ params }: PageProps) {
     setSubmitting(true);
     setSubmitError(null);
 
-    // Prefer the server-side intake (persisted on upload); fall back to
-    // the localStorage stash, then to a minimal placeholder so the
-    // backend's required-fields check still passes.
     const intake =
       packet.intake ??
       loadIntake(params.id) ??
@@ -131,7 +128,7 @@ export default function ReviewPage({ params }: PageProps) {
         onSubmit={handleRegenerate}
       />
 
-      <main className="container py-10">
+      <main className="container py-12">
         {loadError ? (
           <LoadErrorPanel
             message={loadError}
@@ -143,10 +140,16 @@ export default function ReviewPage({ params }: PageProps) {
           <div className="grid gap-8 lg:grid-cols-[2fr_1fr]">
             <section>
               <header>
-                <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">
-                  Review detected items
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-300">
+                  Step 2 of 3
+                </p>
+                <h1 className="mt-3 text-4xl font-extrabold tracking-tight text-white md:text-5xl">
+                  <span className="font-serif font-normal italic text-teal-300 [text-shadow:0_0_30px_rgba(20,184,166,0.35)]">
+                    Review
+                  </span>{" "}
+                  detected items
                 </h1>
-                <p className="mt-2 max-w-2xl text-slate-600">
+                <p className="mt-3 max-w-2xl text-slate-400">
                   Delete duplicates, fill in values, and mark which items you
                   have receipts for. The final packet regenerates from your
                   edits.
@@ -176,7 +179,7 @@ export default function ReviewPage({ params }: PageProps) {
               {submitError && (
                 <p
                   role="alert"
-                  className="mt-6 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+                  className="mt-6 rounded-lg border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-300"
                 >
                   {submitError}
                 </p>
@@ -217,17 +220,17 @@ function ReviewHeader({
   onSubmit: () => void;
 }) {
   return (
-    <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur">
+    <header className="sticky top-0 z-40 border-b border-white/10 bg-[#0a0e1a]/80 backdrop-blur-xl">
       <div className="container flex h-16 items-center justify-between gap-6">
-        <Logo />
-        <div className="hidden text-sm text-slate-600 md:block">
-          <span className="font-medium text-slate-900">
-            Claim {shortClaimId(claimId)}
+        <Logo variant="dark" />
+        <div className="hidden items-center gap-2 text-sm text-slate-400 md:flex">
+          <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 font-mono text-xs text-slate-300">
+            {shortClaimId(claimId)}
           </span>
           {incidentDate && (
             <>
-              <span className="mx-2 text-slate-300">•</span>
-              <span>{incidentDate}</span>
+              <span className="h-1 w-1 rounded-full bg-slate-600" />
+              <span className="text-slate-400">{incidentDate}</span>
             </>
           )}
         </div>
@@ -235,8 +238,12 @@ function ReviewHeader({
           type="button"
           onClick={onSubmit}
           disabled={!canSubmit}
-          className="bg-navy-600 text-white hover:bg-navy-700 disabled:bg-navy-600/40"
+          className="group relative h-10 overflow-hidden rounded-xl bg-gradient-to-r from-navy-600 to-teal-600 px-5 text-sm font-semibold text-white shadow-[0_0_30px_rgba(20,184,166,0.35)] transition-all hover:shadow-[0_0_45px_rgba(20,184,166,0.55)] hover:brightness-110 disabled:opacity-50 disabled:shadow-none disabled:hover:brightness-100"
         >
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/15 to-transparent transition-transform duration-1000 group-hover:translate-x-full"
+          />
           {submitting ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -245,7 +252,7 @@ function ReviewHeader({
           ) : (
             <>
               Generate final packet
-              <ArrowRight className="h-4 w-4" />
+              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
             </>
           )}
         </Button>
@@ -279,17 +286,20 @@ function SummaryStats({
     { label: "Verified", value: formatCurrency(verifiedTotal), accent: true },
   ];
   return (
-    <dl className="mt-8 grid grid-cols-2 gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-card md:grid-cols-4">
+    <dl className="glass-card mt-8 grid grid-cols-2 gap-2 rounded-2xl p-2 md:grid-cols-4">
       {stats.map((s) => (
-        <div key={s.label} className="px-3 py-2">
-          <dt className="text-xs uppercase tracking-wide text-slate-500">
+        <div
+          key={s.label}
+          className="rounded-xl px-4 py-3 transition-colors hover:bg-white/[0.03]"
+        >
+          <dt className="text-[11px] uppercase tracking-[0.14em] text-slate-500">
             {s.label}
           </dt>
           <dd
             className={
               s.accent
-                ? "mt-1 text-xl font-bold tabular-nums text-teal-600"
-                : "mt-1 text-xl font-bold tabular-nums text-slate-900"
+                ? "mt-1 text-2xl font-extrabold tabular-nums text-teal-300 [text-shadow:0_0_24px_rgba(20,184,166,0.4)]"
+                : "mt-1 text-2xl font-extrabold tabular-nums text-white"
             }
           >
             {s.value}
@@ -301,15 +311,15 @@ function SummaryStats({
 }
 
 // ---------------------------------------------------------------------------
-// Empty / loading / error / video placeholder
+// Empty / loading / error
 // ---------------------------------------------------------------------------
 
 function EmptyState() {
   return (
-    <div className="mt-6 flex flex-col items-center rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-16 text-center">
-      <Receipt className="h-8 w-8 text-slate-300" />
-      <p className="mt-4 font-semibold text-slate-900">No items detected</p>
-      <p className="mt-1 max-w-sm text-sm text-slate-600">
+    <div className="glass-card mt-6 flex flex-col items-center rounded-2xl border-dashed border-white/15 bg-white/[0.02] px-6 py-16 text-center">
+      <Receipt className="h-8 w-8 text-slate-500" />
+      <p className="mt-4 font-semibold text-white">No items detected</p>
+      <p className="mt-1 max-w-sm text-sm text-slate-400">
         This usually means the video had no clear narration of damaged items.
         You can still generate a packet, or upload a new video.
       </p>
@@ -320,8 +330,8 @@ function EmptyState() {
 function LoadingState() {
   return (
     <div className="flex min-h-[40vh] items-center justify-center">
-      <div className="flex items-center gap-3 text-slate-500">
-        <Loader2 className="h-5 w-5 animate-spin" />
+      <div className="flex items-center gap-3 text-slate-400">
+        <Loader2 className="h-5 w-5 animate-spin text-teal-300" />
         <span className="text-sm">Loading claim packet…</span>
       </div>
     </div>
@@ -336,21 +346,21 @@ function LoadErrorPanel({
   onRetry: () => void;
 }) {
   return (
-    <div className="mx-auto mt-12 max-w-xl rounded-2xl border border-red-200 bg-red-50 p-6 shadow-card">
+    <div className="glass-card mx-auto mt-12 max-w-xl rounded-2xl border-red-400/30 bg-red-500/5 p-6">
       <div className="flex items-start gap-3">
-        <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />
+        <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-400" />
         <div>
-          <p className="font-semibold text-red-900">
+          <p className="font-semibold text-red-200">
             Couldn&rsquo;t load claim
           </p>
-          <p className="mt-1 break-words text-sm text-red-800">{message}</p>
+          <p className="mt-1 break-words text-sm text-red-300/90">{message}</p>
         </div>
       </div>
       <Button
         type="button"
         variant="outline"
         onClick={onRetry}
-        className="mt-6 border-red-200 bg-white text-red-700 hover:bg-red-100 hover:text-red-800"
+        className="mt-6 border-white/15 bg-white/[0.04] text-slate-200 hover:border-white/25 hover:bg-white/[0.08] hover:text-white"
       >
         Back to upload
       </Button>

@@ -54,6 +54,9 @@
   body {
     @apply text-slate-200 antialiased;
     font-feature-settings: "ss01", "cv11";
+    /* Decorative halos / rotated mockup / glow rings extend a few px past
+       the viewport on purpose. Clip (not hidden) keeps sticky headers working. */
+    overflow-x: clip;
   }
   /* Headings default to white so we don't have to tag every h1/h2. */
   h1, h2, h3, h4, h5, h6 {
