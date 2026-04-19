@@ -32,9 +32,10 @@ NAME_SIMILARITY_THRESHOLD: float = 0.7
 TIME_PROXIMITY_SEC: float = 8.0
 GEMINI_MODEL: str = "gemini-2.5-flash"
 
-# Free-tier limit on gemini-2.5-flash is 5 RPM. 12.5s between calls keeps
-# us strictly under (4.8 RPM) with a small safety margin.
-MIN_SECONDS_BETWEEN_CALLS: float = 12.5
+# Tier 1 (paid) on gemini-2.5-flash allows ~1000 RPM. Keep a tiny 0.5s
+# spacing as a courtesy gap; the 429 retry path below remains as the real
+# safety net if we ever hit a per-minute or per-day cap.
+MIN_SECONDS_BETWEEN_CALLS: float = 0.5
 MAX_RATE_LIMIT_RETRIES: int = 3
 DEFAULT_RETRY_DELAY_SEC: float = 20.0
 _last_call_time: float = 0.0
@@ -42,6 +43,17 @@ _last_call_time: float = 0.0
 VALID_CATEGORIES: set[str] = {
     "electronics", "furniture", "textile", "appliance",
     "decor", "clothing", "other",
+}
+
+# Tokens that are too generic to be considered a brand signal.
+STOPWORDS: set[str] = {
+    "the", "a", "an", "and", "or", "with", "for",
+    "my", "this", "that", "these", "those",
+}
+GENERIC_CATEGORY_WORDS: set[str] = {
+    "tv", "computer", "laptop", "phone", "headphones", "speaker",
+    "lamp", "rug", "chair", "table", "camera", "watch", "remote",
+    "keyboard", "mouse", "monitor", "bed", "book", "books",
 }
 
 _PROMPT_TEMPLATE = """You are analyzing a segment of an insurance claim video walkthrough.
@@ -309,7 +321,43 @@ def _detect_window(
     return cleaned
 
 
+def _brand_tokens(name: str) -> set[str]:
+    """Extract candidate brand tokens from an item name.
+
+    A brand token is a 3+ char word in the ORIGINAL (case-preserved)
+    name that starts with an uppercase letter and isn't a stopword
+    or generic category word. e.g. "Hisense" or "Lenovo" qualify;
+    "TV", "the", "Laptop" do not.
+    """
+    tokens: set[str] = set()
+    for raw in re.findall(r"[A-Za-z][A-Za-z0-9\-]*", name):
+        if len(raw) < 3 or not raw[0].isupper():
+            continue
+        low = raw.lower()
+        if low in STOPWORDS or low in GENERIC_CATEGORY_WORDS:
+            continue
+        tokens.add(low)
+    return tokens
+
+
+def _share_brand_token(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    return bool(_brand_tokens(a["name"]) & _brand_tokens(b["name"]))
+
+
+def _category_compatible(c1: str, c2: str) -> bool:
+    """Same category, or one side is 'other' (softens the gate so a
+    brand-tagged item categorized vaguely as 'other' can still merge
+    with the same brand item categorized specifically)."""
+    return c1 == c2 or c1 == "other" or c2 == "other"
+
+
 def _same_item(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    # Brand-token rule: shared brand token (e.g. "Hisense", "Lenovo",
+    # "Pixel") + compatible category → same physical object regardless
+    # of how far apart in the video they were re-described.
+    if _share_brand_token(a, b) and _category_compatible(a["category"], b["category"]):
+        return True
+
     if a["category"] != b["category"]:
         return False
     sim = SequenceMatcher(None, a["name"].lower(), b["name"].lower()).ratio()
