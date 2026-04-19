@@ -253,7 +253,6 @@ def ingest_policy(pdf_path: str) -> list[PolicySection]:
         raise FileNotFoundError(f"Policy PDF not found: {pdf_path}")
 
     text = _extract_text(pdf_path)
-    text = text.replace("\ufffd", "'")
     if not text.strip():
         print("[ingest_policy] WARNING: no text extracted from PDF")
         return []
