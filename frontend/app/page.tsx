@@ -1,5 +1,6 @@
 import { FileCheck, Shield, Zap } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
+import { UploadCard } from "@/components/upload/upload-card";
 
 const FEATURES = [
   {
@@ -55,27 +56,9 @@ export default function LandingPage() {
           </p>
         </section>
 
-        {/* RIGHT — upload card placeholder; real form lands in commit 5 */}
+        {/* RIGHT — intake + dropzones + submit */}
         <section className="flex">
-          <div className="w-full self-center rounded-2xl border border-slate-200 bg-white p-8 shadow-card">
-            <p className="text-sm font-semibold uppercase tracking-widest text-navy-600">
-              Start a claim
-            </p>
-            <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-900">
-              Upload your video and policy
-            </h2>
-            <p className="mt-2 text-sm text-slate-600">
-              The intake form, dual file dropzones, and submit flow ship in the
-              next commit.
-            </p>
-            <div className="mt-8 grid gap-4">
-              <div className="h-12 rounded-lg bg-slate-100" />
-              <div className="h-12 rounded-lg bg-slate-100" />
-              <div className="h-32 rounded-xl border-2 border-dashed border-slate-200" />
-              <div className="h-32 rounded-xl border-2 border-dashed border-slate-200" />
-              <div className="h-12 rounded-lg bg-navy-600/30" />
-            </div>
-          </div>
+          <UploadCard />
         </section>
       </div>
     </main>
