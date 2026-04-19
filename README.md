@@ -58,7 +58,7 @@ npm install
 npm run dev
 ```
 
-Open <http://localhost:3000>.
+
 
 ### Optional: pointing the frontend at a non-default backend
 
@@ -97,8 +97,6 @@ The full pipeline runs from the command line too:
 cd backend
 python pipeline.py test outputs\test\real-video.mp4 demo_policy.pdf
 ```
-
-Output: `backend\outputs\test\packet.pdf`.
 
 ## Frontend routes
 
