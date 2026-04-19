@@ -84,3 +84,6 @@ chroma_db/
 
 #videos
 real-video.mp4
+
+api_stdout.log
+api_stderr.log
