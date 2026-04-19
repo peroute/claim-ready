@@ -15,7 +15,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Dropzone } from "@/components/upload/dropzone";
-import { ApiError, createClaim } from "@/lib/api";
+import { ApiError, createClaim, type IntakePayload } from "@/lib/api";
+import { saveIntake } from "@/lib/intake-storage";
 
 const CAUSES = [
   "Water",
@@ -65,7 +66,7 @@ export function UploadCard() {
     setSubmitting(true);
     setError(null);
 
-    const intake = {
+    const intake: IntakePayload = {
       claimant_name: claimantName.trim(),
       incident_date: incidentDate,
       cause,
@@ -79,6 +80,8 @@ export function UploadCard() {
 
     try {
       const { claim_id } = await createClaim(formData);
+      // Stash so the review screen can replay this to /regenerate.
+      saveIntake(claim_id, intake);
       router.push(`/claim/${claim_id}/processing`);
     } catch (err) {
       const msg =

@@ -5,32 +5,22 @@ import { useRouter } from "next/navigation";
 import {
   AlertCircle,
   ArrowRight,
-  BadgeCheck,
-  ImageIcon,
   Loader2,
   Receipt,
-  Trash2,
 } from "lucide-react";
 
 import { Logo } from "@/components/brand/logo";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { InventoryTable } from "@/components/review/inventory-table";
 import {
   ApiError,
   getPacket,
+  regeneratePacket,
   type ClaimPacketJSON,
   type InventoryItem,
 } from "@/lib/api";
 import { formatCurrency, shortClaimId, sumValues } from "@/lib/format";
+import { fallbackIntake, loadIntake } from "@/lib/intake-storage";
 
 interface PageProps {
   params: { id: string };
@@ -40,7 +30,11 @@ export default function ReviewPage({ params }: PageProps) {
   const router = useRouter();
   const [packet, setPacket] = useState<ClaimPacketJSON | null>(null);
   const [items, setItems] = useState<InventoryItem[]>([]);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -50,6 +44,7 @@ export default function ReviewPage({ params }: PageProps) {
         if (cancelled) return;
         setPacket(p);
         setItems(p.items);
+        if (p.items.length > 0) setSelectedItemId(p.items[0].item_id);
       } catch (err) {
         if (cancelled) return;
         const msg =
@@ -66,6 +61,51 @@ export default function ReviewPage({ params }: PageProps) {
     };
   }, [params.id]);
 
+  // ---- mutations -----------------------------------------------------------
+
+  function updateItem(itemId: string, patch: Partial<InventoryItem>) {
+    setItems((prev) =>
+      prev.map((it) => (it.item_id === itemId ? { ...it, ...patch } : it)),
+    );
+  }
+
+  function removeItem(itemId: string) {
+    setItems((prev) => prev.filter((it) => it.item_id !== itemId));
+    setSelectedItemId((prev) => (prev === itemId ? null : prev));
+  }
+
+  function selectItem(item: InventoryItem) {
+    setSelectedItemId(item.item_id);
+    // Commit 9 wires this to the video player's seek().
+  }
+
+  // ---- submit --------------------------------------------------------------
+
+  async function handleRegenerate() {
+    if (!packet || submitting) return;
+    setSubmitting(true);
+    setSubmitError(null);
+
+    const intake =
+      loadIntake(params.id) ?? fallbackIntake(packet.incident_date);
+
+    try {
+      await regeneratePacket(params.id, items, intake);
+      router.push(`/claim/${params.id}/packet`);
+    } catch (err) {
+      const msg =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Failed to regenerate packet.";
+      setSubmitError(msg);
+      setSubmitting(false);
+    }
+  }
+
+  // ---- derived stats -------------------------------------------------------
+
   const receiptCount = items.filter((i) => i.proof_attached).length;
   const estTotal = sumValues(items);
   const verifiedTotal = sumValues(items, { verifiedOnly: true });
@@ -75,10 +115,9 @@ export default function ReviewPage({ params }: PageProps) {
       <ReviewHeader
         claimId={params.id}
         incidentDate={packet?.incident_date}
-        canSubmit={!!packet}
-        onSubmit={() => {
-          /* Wired in commit 8 (regenerate + route to packet). */
-        }}
+        canSubmit={!!packet && !submitting}
+        submitting={submitting}
+        onSubmit={handleRegenerate}
       />
 
       <main className="container py-10">
@@ -113,7 +152,22 @@ export default function ReviewPage({ params }: PageProps) {
               {items.length === 0 ? (
                 <EmptyState />
               ) : (
-                <InventoryTable items={items} />
+                <InventoryTable
+                  items={items}
+                  selectedItemId={selectedItemId}
+                  onSelect={selectItem}
+                  onUpdate={updateItem}
+                  onRemove={removeItem}
+                />
+              )}
+
+              {submitError && (
+                <p
+                  role="alert"
+                  className="mt-6 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+                >
+                  {submitError}
+                </p>
               )}
             </section>
 
@@ -128,18 +182,20 @@ export default function ReviewPage({ params }: PageProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Header bar — sticky
+// Header bar
 // ---------------------------------------------------------------------------
 
 function ReviewHeader({
   claimId,
   incidentDate,
   canSubmit,
+  submitting,
   onSubmit,
 }: {
   claimId: string;
   incidentDate: string | undefined;
   canSubmit: boolean;
+  submitting: boolean;
   onSubmit: () => void;
 }) {
   return (
@@ -163,8 +219,17 @@ function ReviewHeader({
           disabled={!canSubmit}
           className="bg-navy-600 text-white hover:bg-navy-700 disabled:bg-navy-600/40"
         >
-          Generate final packet
-          <ArrowRight className="h-4 w-4" />
+          {submitting ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Regenerating…
+            </>
+          ) : (
+            <>
+              Generate final packet
+              <ArrowRight className="h-4 w-4" />
+            </>
+          )}
         </Button>
       </div>
     </header>
@@ -172,7 +237,7 @@ function ReviewHeader({
 }
 
 // ---------------------------------------------------------------------------
-// Summary stats row
+// Summary stats
 // ---------------------------------------------------------------------------
 
 function SummaryStats({
@@ -191,21 +256,10 @@ function SummaryStats({
       label: itemCount === 1 ? "item detected" : "items detected",
       value: itemCount.toString(),
     },
-    {
-      label: "with receipts",
-      value: receiptCount.toString(),
-    },
-    {
-      label: "Est. total",
-      value: formatCurrency(estTotal),
-    },
-    {
-      label: "Verified",
-      value: formatCurrency(verifiedTotal),
-      accent: true,
-    },
+    { label: "with receipts", value: receiptCount.toString() },
+    { label: "Est. total", value: formatCurrency(estTotal) },
+    { label: "Verified", value: formatCurrency(verifiedTotal), accent: true },
   ];
-
   return (
     <dl className="mt-8 grid grid-cols-2 gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-card md:grid-cols-4">
       {stats.map((s) => (
@@ -229,152 +283,7 @@ function SummaryStats({
 }
 
 // ---------------------------------------------------------------------------
-// Inventory table — read-only render in this commit; commit 8 wires edits
-// ---------------------------------------------------------------------------
-
-function InventoryTable({ items }: { items: InventoryItem[] }) {
-  return (
-    <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card">
-      <Table>
-        <TableHeader>
-          <TableRow className="bg-slate-50 hover:bg-slate-50">
-            <TableHead className="w-14 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              #
-            </TableHead>
-            <TableHead className="w-[110px] text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Frame
-            </TableHead>
-            <TableHead className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Item
-            </TableHead>
-            <TableHead className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Damage
-            </TableHead>
-            <TableHead className="w-[140px] text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Value
-            </TableHead>
-            <TableHead className="w-[100px] text-center text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Receipt
-            </TableHead>
-            <TableHead className="w-[140px] text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Policy
-            </TableHead>
-            <TableHead className="w-[60px]" />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {items.map((item, i) => (
-            <TableRow
-              key={item.item_id}
-              className="border-t border-slate-100 align-top"
-            >
-              <TableCell className="pt-5 text-sm font-medium tabular-nums text-slate-400">
-                {(i + 1).toString().padStart(2, "0")}
-              </TableCell>
-
-              <TableCell className="py-4">
-                <Thumbnail item={item} />
-              </TableCell>
-
-              <TableCell className="py-4">
-                <div className="flex items-start gap-1.5">
-                  <p className="font-semibold text-slate-900">{item.name}</p>
-                  {item.brand_recognized && (
-                    <BadgeCheck
-                      className="mt-0.5 h-4 w-4 shrink-0 text-teal-500"
-                      aria-label="Brand recognized"
-                    />
-                  )}
-                </div>
-                <Badge
-                  variant="secondary"
-                  className="mt-1.5 bg-slate-100 font-medium capitalize text-slate-700 hover:bg-slate-100"
-                >
-                  {item.category}
-                </Badge>
-              </TableCell>
-
-              <TableCell className="max-w-xs py-4 text-sm text-slate-600">
-                <p className="line-clamp-2">
-                  {item.damage_observed || (
-                    <span className="italic text-slate-400">
-                      No damage noted
-                    </span>
-                  )}
-                </p>
-              </TableCell>
-
-              <TableCell className="py-4 text-sm text-slate-700 tabular-nums">
-                {formatCurrency(item.estimated_value)}
-              </TableCell>
-
-              <TableCell className="py-4 text-center">
-                <div className="inline-flex">
-                  <Checkbox
-                    checked={item.proof_attached}
-                    disabled
-                    aria-label="Receipt attached"
-                  />
-                </div>
-              </TableCell>
-
-              <TableCell className="py-4 text-xs text-slate-500">
-                {item.policy_citations.length > 0 ? (
-                  <div className="flex flex-wrap gap-1">
-                    {item.policy_citations.map((sid) => (
-                      <span
-                        key={sid}
-                        className="rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-600"
-                      >
-                        §{sid}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <span className="italic text-slate-400">none</span>
-                )}
-              </TableCell>
-
-              <TableCell className="py-4">
-                <button
-                  type="button"
-                  disabled
-                  aria-label="Remove item (enabled in commit 8)"
-                  className="grid h-8 w-8 place-items-center rounded-lg text-slate-300"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
-  );
-}
-
-function Thumbnail({ item }: { item: InventoryItem }) {
-  // thumbnail_base64 lands in commit 9 (backend addition); until then
-  // render a typed placeholder so the layout reads correctly.
-  if (item.thumbnail_base64) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={`data:image/jpeg;base64,${item.thumbnail_base64}`}
-        alt={item.name}
-        className="h-[60px] w-20 rounded-lg object-cover ring-1 ring-slate-200"
-      />
-    );
-  }
-  return (
-    <div className="grid h-[60px] w-20 place-items-center rounded-lg bg-slate-100 text-slate-400 ring-1 ring-slate-200">
-      <ImageIcon className="h-5 w-5" />
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Empty / loading / error states
+// Empty / loading / error / video placeholder
 // ---------------------------------------------------------------------------
 
 function EmptyState() {
@@ -432,8 +341,6 @@ function LoadErrorPanel({
 }
 
 function VideoPanelPlaceholder() {
-  // Real <video> player + frame seek wire up in commit 9 alongside the
-  // backend video endpoint.
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
