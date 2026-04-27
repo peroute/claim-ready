@@ -250,7 +250,7 @@ function ValueInput({
 
   return (
     <div className="relative">
-      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">
+      <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-sm font-medium text-slate-500">
         $
       </span>
       <Input
@@ -261,7 +261,7 @@ function ValueInput({
         value={display}
         onChange={handle}
         placeholder="0.00"
-        className="h-9 rounded-lg border-white/10 bg-white/[0.03] pl-7 tabular-nums text-slate-100 placeholder:text-slate-600 focus-visible:border-teal-400 focus-visible:ring-2 focus-visible:ring-teal-400/30 focus-visible:ring-offset-0"
+        className="h-9 rounded-md border-white/10 bg-white/[0.03] pl-6 pr-2 text-right tabular-nums text-slate-100 placeholder:text-slate-600 focus-visible:border-teal-400 focus-visible:ring-2 focus-visible:ring-teal-400/30 focus-visible:ring-offset-0 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
       />
     </div>
   );

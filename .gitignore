@@ -19,3 +19,4 @@ Thumbs.db
 # Stray Python bytecode
 __pycache__/
 *.pyc
+backend/claim-video.mp4

@@ -291,10 +291,15 @@ async def get_packet_pdf(claim_id: str) -> FileResponse:
     p = _packet_pdf_path(claim_id)
     if not p.is_file():
         raise HTTPException(status_code=404, detail="packet.pdf not found")
+    # `content_disposition_type="inline"` so the browser/iframe renders the
+    # PDF instead of downloading it. The frontend's "Download PDF" link sets
+    # its own `download="claim_<id>.pdf"` attribute when the user wants the
+    # file on disk, so we don't lose the nice filename either.
     return FileResponse(
         path=str(p),
         media_type="application/pdf",
         filename=f"claim_{claim_id}.pdf",
+        content_disposition_type="inline",
     )
 
 
