@@ -198,4 +198,3 @@ claim-ready/
 
 Built solo at Hook 'Em Hacks 2026 (April 18–19).
 
-Powered by Gemini 2.5 Flash · Groq Whisper · CLIP · ChromaDB · Playwright · Next.js · FastAPI.
