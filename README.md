@@ -95,22 +95,27 @@ Open http://localhost:3000, upload a video + policy, and watch it work.
 
 ## Architecture
 
+```mermaid
+flowchart LR
+    UI["Next.js frontend<br/>upload · review · packet"] -- "video + policy PDF" --> API["FastAPI api.py"]
+    API --> IV["ingest_video<br/>ffmpeg frames + CLIP"]
+    API --> IP["ingest_policy<br/>sections + MiniLM"]
+    IV -- audio --> W(["Groq Whisper"])
+    IV --> DB[("ChromaDB<br/>per-claim collections")]
+    IP --> DB
+    DB --> DI["detect_inventory"]
+    DI <--> G(["Gemini 2.5 Flash"])
+    DI --> SP["search_policy<br/>RAG citations"]
+    SP --> GP["generate_packet<br/>Jinja + Playwright"]
+    GP --> PDF[/"packet.pdf"/]
+    PDF --> UI
 ```
-Upload (video + policy)
-        ↓
-┌─────────────────────────────────────────┐
-│  FastAPI backend                         │
-│  ────────────────────────────────        │
-│  ingest_video   → frames + transcript    │
-│  ingest_policy  → sectioned + embedded   │
-│  vector_store   → ChromaDB collections   │
-│  detect_inventory → Gemini multimodal    │
-│  search_policy  → semantic RAG citations │
-│  generate_packet → Jinja + Playwright    │
-└─────────────────────────────────────────┘
-        ↓
-  ClaimPacket.pdf + inventory review UI
-```
+
+### Sample packet
+
+Itemized inventory page from a real run — thumbnails come from the video, each item cites its policy section:
+
+![Sample claim packet — itemized inventory](docs/packet-sample.png)
 
 ### Pipeline stages (live progress in the UI)
 
@@ -166,6 +171,8 @@ Output lands at `outputs/test/packet.pdf`.
 **No web-scraping for values.** Item valuation is explicitly user-entered in V1. This is an intentional product choice: auto-scraped prices are fragile and invite fraud; receipt-backed values are what insurers actually accept. The packet separates *verified totals* (items with proof attached) from *unverified totals*, giving adjusters a credibility signal out of the box.
 
 ## Known limitations (V1 scope)
+
+- **Known limits:** the backend runs locally only, CORS is wide open (`allow_origins=["*"]`), and there are no tests or CI yet.
 
 - Item value estimation is deferred to V2 — values are user-entered during the review step.
 - Gemini detection requires a Tier 1 (billing-enabled) Google Cloud project.
