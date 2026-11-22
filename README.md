@@ -9,7 +9,7 @@ Built solo at Hook 'Em Hacks 2026 · Multimodal Search & Generation track.
 ## 🚀 Live
 
 - **Landing page:** https://claim-ready-hookem.vercel.app
-- **Demo video:** https://www.youtube.com/watch?v=z7nNDC8BowQ
+- **Demo video:** https://www.youtube.com/watch?v=ovHGdx5eG28
 - **GitHub:** https://github.com/peroute/claim-ready
 
 > The Vercel link hosts the frontend. The full pipeline (CLIP + Whisper + Gemini + ChromaDB + Playwright) runs on a local Python backend — see the Quick Start below to run it end-to-end, or watch the demo video for a full walkthrough.
