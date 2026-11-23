@@ -18,7 +18,7 @@ Built solo at Hook 'Em Hacks 2026 · Multimodal Search & Generation track.
 
 ## The problem
 
-Insurers have spent billions building AI to evaluate claims. Policyholders have almost nothing. When something gets damaged, the average claimant submits blurry photos, can't cite their own policy, and accepts whatever the adjuster offers. **73 million Americans had claims denied last year. Less than 1% appealed.**
+Insurers have spent billions building AI to evaluate claims. Policyholders have almost nothing. When something gets damaged, the average claimant submits blurry photos, can't cite their own policy, and accepts whatever the adjuster offers. **Most people never push back on a low offer, because building a well-documented claim is hard.**
 
 Claim-ready closes that gap.
 
@@ -172,7 +172,7 @@ Output lands at `outputs/test/packet.pdf`.
 
 ## Known limitations (V1 scope)
 
-- **Known limits:** the backend runs locally only, CORS is wide open (`allow_origins=["*"]`), and there are no tests or CI yet.
+- The backend runs locally only, CORS is wide open (`allow_origins=["*"]`), and there are no tests or CI yet.
 
 - Item value estimation is deferred to V2 — values are user-entered during the review step.
 - Gemini detection requires a Tier 1 (billing-enabled) Google Cloud project.
